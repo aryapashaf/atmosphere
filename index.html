@@ -1,0 +1,367 @@
+﻿<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Atmosphere</title>
+    <meta name="theme-color" content="#0b1f4a" />
+    <link rel="manifest" href="manifest.json" />
+    <link rel="icon" href="icon.svg" type="image/svg+xml" />
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body class="theme-clear">
+    <div class="bg-base"></div>
+    <div class="bg-stars"></div>
+    <div class="bg-nebula"></div>
+    <div class="rain"></div>
+    <div class="flash"></div>
+    <div id="cloudLoader" class="cloud-loader" aria-live="polite" aria-busy="true">
+      <div class="cloud-outline-wrap" aria-hidden="true">
+        <svg class="cloud-outline-svg" viewBox="0 0 150 90" role="presentation">
+          <path
+            d="M20 48 C20 36 30 28 42 30 C47 20 58 14 70 18 C80 10 96 12 104 24 C118 23 130 33 130 46 C130 58 120 66 106 66 H40 C28 66 20 58 20 48 Z"
+          ></path>
+        </svg>
+        <span class="cloud-orbit-dot"></span>
+      </div>
+      <p data-i18n="status.loading_slow">Loading weather data...</p>
+    </div>
+
+    <main class="app">
+      <header class="topbar reveal">
+        <div class="brand">
+          <span class="brand-dot"></span>
+          <h1>Atmosphere</h1>
+        </div>
+
+        <form id="searchForm" class="search-box" autocomplete="off">
+          <span class="search-icon">⌕</span><!--  -->
+          <input
+            id="searchInput"
+            type="text"
+            data-i18n-placeholder="placeholder.search_city"
+            placeholder="Search city..."
+          />
+          <ul id="suggestions" class="suggestions"></ul>
+        </form>
+
+        <div class="top-controls">
+          <div class="unit-toggle" role="group" aria-label="Temperature unit">
+            <button id="unitC" class="unit-btn active" type="button">°C</button>
+            <button id="unitF" class="unit-btn" type="button">°F</button>
+          </div>
+
+          <div
+            id="localeSelect"
+            class="custom-select locale-select"
+            data-select
+            aria-label="Language and locale"
+          >
+            <button
+              type="button"
+              class="custom-select-trigger"
+              id="localeTrigger"
+            >
+              Auto
+            </button>
+            <ul class="custom-select-menu">
+              <li
+                class="custom-select-option selected"
+                data-value="auto"
+                data-i18n="locale.auto"
+              >
+                Auto
+              </li>
+              <li
+                class="custom-select-option"
+                data-value="en-US"
+                data-i18n="locale.en_us"
+              >
+                English (US)
+              </li>
+              <li
+                class="custom-select-option"
+                data-value="id-ID"
+                data-i18n="locale.id_id"
+              >
+                Indonesia
+              </li>
+            </ul>
+          </div>
+        </div>
+      </header>
+
+      <section class="hero reveal">
+        <p class="hero-kicker" data-i18n="hero.current_weather">
+          Current Weather
+        </p>
+        <h2 id="city" data-i18n="status.detecting_location">
+          Detecting location...
+        </h2>
+        <p id="temp" class="hero-temp">--°</p>
+        <p id="desc" class="hero-desc" data-i18n="status.loading">Loading...</p>
+        <p id="status" class="status-text"></p>
+      </section>
+
+      <section class="main-card reveal">
+        <div class="main-left">
+          <div class="main-left-primary">
+            <img id="currentIcon" alt="Current weather icon" class="main-icon" />
+            <p id="cardTemp" class="card-temp">--°</p>
+          </div>
+          <div class="main-left-meta">
+            <p id="cardCity" class="card-city">--</p>
+            <p id="date" class="card-date">--</p>
+          </div>
+        </div>
+
+        <div class="main-divider"></div>
+
+        <div class="main-right">
+          <div class="main-right-inner">
+            <p id="condition" class="metric-title">--</p>
+            <div class="main-metrics">
+              <p class="metric-item">
+                <span class="metric-label" data-i18n="label.feels_like"
+                  >Feels like</span
+                >
+                <span id="feels" class="metric-value"></span>
+              </p>
+              <p class="metric-item">
+                <span class="metric-label" data-i18n="label.wind">Wind</span>
+                <span id="wind" class="metric-value"></span>
+              </p>
+              <p class="metric-item">
+                <span class="metric-label" data-i18n="label.humidity"
+                  >Humidity</span
+                >
+                <span id="humidity" class="metric-value"></span>
+              </p>
+              <p class="metric-item">
+                <span class="metric-label" data-i18n="label.pressure"
+                  >Pressure</span
+                >
+                <span id="pressure" class="metric-value"></span>
+              </p>
+              <p class="metric-item metric-item-wide">
+                <span class="metric-label" data-i18n="label.visibility"
+                  >Visibility</span
+                >
+                <span id="visibility" class="metric-value"></span>
+              </p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="panel reveal" id="alertsPanel">
+        <div class="panel-head">
+          <h3 data-i18n="panel.weather_alerts">Weather Alerts</h3>
+        </div>
+        <ul id="alerts" class="list"></ul>
+      </section>
+
+      <section class="info-grid reveal">
+        <article class="panel">
+          <div class="panel-head">
+            <h3 data-i18n="panel.air_uv">Air & UV</h3>
+          </div>
+          <p>
+            <span data-i18n="label.aqi">AQI</span>: <strong id="aqi">--</strong>
+          </p>
+          <p>
+            <span data-i18n="label.uv_index">UV Index</span>:
+            <strong id="uv">--</strong>
+          </p>
+        </article>
+
+        <article class="panel">
+          <div class="panel-head">
+            <h3 data-i18n="panel.sun_moon">Sun & Moon</h3>
+          </div>
+          <p>
+            <span data-i18n="label.sunrise">Sunrise</span>:
+            <strong id="sunrise">--</strong>
+          </p>
+          <p>
+            <span data-i18n="label.sunset">Sunset</span>:
+            <strong id="sunset">--</strong>
+          </p>
+          <p>
+            <span data-i18n="label.moon_phase">Moon phase</span>:
+            <strong id="moonPhase">--</strong>
+          </p>
+        </article>
+
+        <article class="panel">
+          <div class="panel-head">
+            <h3 data-i18n="panel.comfort">Comfort</h3>
+          </div>
+          <p>
+            <span data-i18n="label.heat_index">Heat index</span>:
+            <strong id="heatIndex">--</strong>
+          </p>
+          <p>
+            <span data-i18n="label.wind_chill">Wind chill</span>:
+            <strong id="windChill">--</strong>
+          </p>
+          <p>
+            <span data-i18n="label.discomfort">Discomfort</span>:
+            <strong id="discomfort">--</strong>
+          </p>
+        </article>
+
+        <article class="panel">
+          <div class="panel-head">
+            <h3 data-i18n="panel.activity_tips">Activity Tips</h3>
+          </div>
+          <ul id="activities" class="list"></ul>
+        </article>
+      </section>
+
+      <section class="panel reveal">
+        <div class="panel-head">
+          <h3 data-i18n="panel.hourly_forecast_24h">Hourly Forecast (24h)</h3>
+        </div>
+        <div id="hourly" class="hourly-track"></div>
+      </section>
+
+      <section class="panel reveal forecast-panel">
+        <div class="panel-head">
+          <h3 data-i18n="panel.five_day_forecast">5-Day Forecast</h3>
+        </div>
+        <div id="forecast" class="forecast-track"></div>
+      </section>
+
+      <section class="panel reveal">
+        <div class="panel-head">
+          <h3 data-i18n="panel.temperature_trend">Temperature Trend</h3>
+        </div>
+        <canvas id="trendChart" width="1100" height="260"></canvas>
+      </section>
+
+      <section class="split reveal">
+        <article class="panel">
+          <div class="panel-head">
+            <h3 data-i18n="panel.compare_cities">Compare Cities</h3>
+          </div>
+          <form id="compareForm" class="inline-form">
+            <input
+              id="compareInput"
+              type="text"
+              data-i18n-placeholder="placeholder.compare_city"
+              placeholder="Compare with city..."
+            />
+            <button type="submit" class="ghost-btn" data-i18n="button.compare">
+              Compare
+            </button>
+          </form>
+          <div
+            id="compareResult"
+            class="compare-result"
+            data-i18n="status.no_comparison"
+          >
+            No comparison yet.
+          </div>
+        </article>
+
+        <article class="panel">
+          <div class="panel-head">
+            <h3 data-i18n="panel.radar_map">Radar Map</h3>
+          </div>
+          <div class="inline-form map-controls">
+            <label for="mapLayer" data-i18n="label.layer">Layer</label>
+            <div id="mapLayer" class="custom-select map-select" data-select>
+              <button
+                type="button"
+                class="custom-select-trigger"
+                id="mapLayerTrigger"
+              >
+                Rain
+              </button>
+              <ul class="custom-select-menu">
+                <li
+                  class="custom-select-option selected"
+                  data-value="rain"
+                  data-i18n="layer.rain"
+                >
+                  Rain
+                </li>
+                <li
+                  class="custom-select-option"
+                  data-value="clouds"
+                  data-i18n="layer.clouds"
+                >
+                  Clouds
+                </li>
+                <li
+                  class="custom-select-option"
+                  data-value="wind"
+                  data-i18n="layer.wind"
+                >
+                  Wind
+                </li>
+              </ul>
+            </div>
+          </div>
+          <iframe
+            id="weatherMap"
+            class="map-frame"
+            title="Weather radar map"
+          ></iframe>
+        </article>
+      </section>
+
+      <section class="split reveal">
+        <article class="panel">
+          <div class="panel-head">
+            <h3 data-i18n="panel.saved_cities">Saved Cities</h3>
+          </div>
+          <div class="inline-form">
+            <button
+              id="saveFavorite"
+              type="button"
+              class="ghost-btn"
+              data-i18n="button.save_current_city"
+            >
+              Save current city
+            </button>
+          </div>
+          <div id="favorites" class="tag-list"></div>
+        </article>
+
+        <article class="panel">
+          <div class="panel-head">
+            <h3 data-i18n="panel.recent_searches">Recent Searches</h3>
+          </div>
+          <div id="history" class="tag-list"></div>
+        </article>
+      </section>
+
+      <section class="panel reveal">
+        <div class="panel-head">
+          <h3 data-i18n="panel.pwa_notifications">PWA & Notifications</h3>
+        </div>
+        <div class="inline-form">
+          <button
+            id="enableNotify"
+            type="button"
+            class="ghost-btn"
+            data-i18n="button.enable_notifications"
+          >
+            Enable notifications
+          </button>
+          <button id="toggleDaily" type="button" class="ghost-btn">
+            Daily reminder: Off
+          </button>
+        </div>
+        <p class="hint" data-i18n="hint.install_pwa">
+          Install this app from browser menu for app-like experience and offline
+          shell.
+        </p>
+      </section>
+    </main>
+
+    <script src="script.js"></script>
+  </body>
+</html>

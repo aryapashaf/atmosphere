@@ -1,0 +1,16 @@
+﻿{
+  "name": "Atmosphere Weather",
+  "short_name": "Atmosphere",
+  "start_url": "./index.html",
+  "display": "standalone",
+  "background_color": "#06122b",
+  "theme_color": "#0b1f4a",
+  "description": "Weather app with forecast, AQI, UV, alerts, and offline shell",
+  "icons": [
+    {
+      "src": "icon.svg",
+      "sizes": "512x512",
+      "type": "image/svg+xml"
+    }
+  ]
+}
