@@ -1,4 +1,4 @@
-﻿const DEG = "°";
+const DEG = "°";
 const API_BASE = "/api";
 const UI = {
   topbar: document.querySelector(".topbar"),
