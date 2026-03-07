@@ -18,6 +18,10 @@ if (!process.env.OPENWEATHER_API_KEY) {
 
 app.use(express.static(path.join(__dirname)));
 
+app.get("/", (_req, res) => {
+  res.sendFile(path.join(__dirname, "index.html"));
+});
+
 // Keep local Express routes aligned with Vercel serverless handlers.
 app.get("/api/weather", apiWeather);
 app.get("/api/forecast", apiForecast);
@@ -25,6 +29,10 @@ app.get("/api/air_pollution", apiAirPollution);
 app.get("/api/geo/direct", apiGeoDirect);
 app.get("/api/uv_moon", apiUvMoon);
 app.get("/api/health", apiHealth);
+
+app.get("*", (_req, res) => {
+  res.sendFile(path.join(__dirname, "index.html"));
+});
 
 app.listen(PORT, () => {
   console.log(`[server] running on http://localhost:${PORT}`);
