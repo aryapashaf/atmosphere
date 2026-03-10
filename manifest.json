@@ -1,7 +1,7 @@
 {
   "name": "Atmosphere Weather",
   "short_name": "Atmosphere",
-  "start_url": "./index.html",
+  "start_url": "index.html",
   "display": "standalone",
   "background_color": "#06122b",
   "theme_color": "#0b1f4a",
