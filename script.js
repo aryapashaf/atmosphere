@@ -9,6 +9,7 @@ const UI = {
   cardTemp: document.getElementById("cardTemp"),
   cardCity: document.getElementById("cardCity"),
   date: document.getElementById("date"),
+  localTime: document.getElementById("localTime"),
   condition: document.getElementById("condition"),
   feels: document.getElementById("feels"),
   humidity: document.getElementById("humidity"),
@@ -45,6 +46,7 @@ const UI = {
   enableNotify: document.getElementById("enableNotify"),
   toggleDaily: document.getElementById("toggleDaily"),
   trendChart: document.getElementById("trendChart"),
+  heroVideo: document.getElementById("heroVideo"),
   rain: document.querySelector(".rain"),
   flash: document.querySelector(".flash"),
   cloudLoader: document.getElementById("cloudLoader")
@@ -61,7 +63,9 @@ const STATE = {
   favorites: JSON.parse(localStorage.getItem("atm_favorites") || "[]"),
   history: JSON.parse(localStorage.getItem("atm_history") || "[]"),
   dailyNotify: localStorage.getItem("atm_daily_notify") === "1",
-  searchDebounce: null
+  searchDebounce: null,
+  localClockTimer: null,
+  localTimezoneOffset: 0
 };
 
 const LOADING = {
@@ -91,6 +95,7 @@ const TRANSLATIONS = {
     "label.wind": "Wind",
     "label.pressure": "Pressure",
     "label.visibility": "Visibility",
+    "label.local_time": "Local time",
     "label.aqi": "AQI",
     "label.uv_index": "UV Index",
     "label.sunrise": "Sunrise",
@@ -184,6 +189,7 @@ const TRANSLATIONS = {
     "label.wind": "Angin",
     "label.pressure": "Tekanan",
     "label.visibility": "Jarak pandang",
+    "label.local_time": "Waktu setempat",
     "label.aqi": "AQI",
     "label.uv_index": "Indeks UV",
     "label.sunrise": "Matahari terbit",
@@ -476,13 +482,37 @@ function moonPhaseLabel(value) {
   return t("moon.waning_crescent");
 }
 
-function formatDate(ts, mode = "date") {
+function formatDate(ts, mode = "date", timezoneOffset = null) {
   const locale = STATE.locale === "auto" ? navigator.language : STATE.locale;
-  const d = new Date(ts * 1000);
+  const hasTimezone = typeof timezoneOffset === "number";
+  const d = new Date((hasTimezone ? ts + timezoneOffset : ts) * 1000);
+  const common = hasTimezone ? { timeZone: "UTC" } : {};
   if (mode === "time") {
-    return d.toLocaleTimeString(locale, { hour: "2-digit", minute: "2-digit" });
+    return d.toLocaleTimeString(locale, { hour: "2-digit", minute: "2-digit", ...common });
   }
-  return d.toLocaleDateString(locale, { day: "numeric", month: "long", year: "numeric" });
+  return d.toLocaleDateString(locale, { day: "numeric", month: "long", year: "numeric", ...common });
+}
+
+function formatUtcOffset(offsetSeconds) {
+  const totalMinutes = Math.floor(Math.abs(Number(offsetSeconds || 0)) / 60);
+  const sign = Number(offsetSeconds || 0) >= 0 ? "+" : "-";
+  const hours = String(Math.floor(totalMinutes / 60)).padStart(2, "0");
+  const minutes = String(totalMinutes % 60).padStart(2, "0");
+  return `UTC${sign}${hours}:${minutes}`;
+}
+
+function renderLocalTime() {
+  if (!UI.localTime) return;
+  const nowUtc = Math.floor(Date.now() / 1000);
+  const timeText = formatDate(nowUtc, "time", STATE.localTimezoneOffset);
+  UI.localTime.textContent = `${t("label.local_time")}: ${timeText} (${formatUtcOffset(STATE.localTimezoneOffset)})`;
+}
+
+function startLocalClock(timezoneOffset) {
+  STATE.localTimezoneOffset = Number(timezoneOffset || 0);
+  if (STATE.localClockTimer) clearInterval(STATE.localClockTimer);
+  renderLocalTime();
+  STATE.localClockTimer = setInterval(renderLocalTime, 30000);
 }
 
 function activeLocale() {
@@ -566,14 +596,20 @@ function suggestionScore(item, query) {
   const name = normalizeText(item.name);
   const state = normalizeText(item.state);
   const country = normalizeText(item.country);
+  const label = normalizeText(formatGeoLabel(item));
   const full = normalizeText(`${item.name} ${item.state || ""} ${item.country || ""}`);
+  const qCompact = q.replace(/,\s*/g, " ");
 
   if (!q) return 0;
   if (name === q) return 1000;
+  if (label === q) return 995;
   if (full === q) return 980;
+  if (full === qCompact) return 975;
+  if (label.startsWith(q)) return 950;
   if (name.startsWith(q)) return 920;
   if (state && state.startsWith(q)) return 900;
   if (full.startsWith(q)) return 860;
+  if (label.includes(q)) return 830;
   if (name.includes(q)) return 760;
   if (state && state.includes(q)) return 730;
   if (country && country.startsWith(q)) return 700;
@@ -588,15 +624,25 @@ function formatGeoLabel(item) {
   return parts.join(", ");
 }
 
+function rankGeoResults(data, query, limit = 8) {
+  return (Array.isArray(data) ? data : [])
+    .map((item) => ({ item, score: suggestionScore(item, query) }))
+    .filter((entry) => entry.score > 0)
+    .sort((a, b) => b.score - a.score)
+    .map((entry) => entry.item)
+    .slice(0, limit);
+}
+
 async function loadBySearchQuery(query) {
   const value = String(query || "").trim();
   if (!value) return;
 
   try {
     startCloudLoader();
-    const geo = await fetchJson(`${API_BASE}/geo/direct?q=${encodeURIComponent(value)}&limit=1`);
-    if (Array.isArray(geo) && geo.length && typeof geo[0].lat === "number" && typeof geo[0].lon === "number") {
-      const target = geo[0];
+    const geo = await fetchJson(`${API_BASE}/geo/direct?q=${encodeURIComponent(value)}&limit=12`);
+    const ranked = rankGeoResults(geo, value, 1);
+    if (ranked.length && typeof ranked[0].lat === "number" && typeof ranked[0].lon === "number") {
+      const target = ranked[0];
       await loadByCoords(target.lat, target.lon, target.name, null, false);
       pushHistory(target.name);
       return;
@@ -1002,12 +1048,7 @@ async function fetchSuggestions(query) {
 
   try {
     const data = await fetchJson(`${API_BASE}/geo/direct?q=${encodeURIComponent(query)}&limit=12`);
-    const ranked = (Array.isArray(data) ? data : [])
-      .map((item) => ({ item, score: suggestionScore(item, query) }))
-      .filter((entry) => entry.score > 0)
-      .sort((a, b) => b.score - a.score)
-      .map((entry) => entry.item)
-      .slice(0, 8);
+    const ranked = rankGeoResults(data, query, 8);
 
     UI.suggestions.innerHTML = "";
     if (!ranked.length) {
@@ -1037,13 +1078,23 @@ async function fetchSuggestions(query) {
   }
 }
 
-function renderCurrent(weather) {
-  UI.city.textContent = weather.name;
+function updateCardCityTextSize(cityName) {
+  if (!UI.cardCity) return;
+  const length = String(cityName || "").trim().length;
+  UI.cardCity.classList.toggle("is-long", length >= 18 && length < 28);
+  UI.cardCity.classList.toggle("is-very-long", length >= 28);
+}
+
+function renderCurrent(weather, cityLabel = null, timezoneOffset = 0) {
+  const displayCity = String(cityLabel || weather.name || "").trim();
+  UI.city.textContent = displayCity;
   UI.temp.textContent = temp(weather.main.temp);
   UI.desc.textContent = weather.weather[0].description;
   UI.cardTemp.textContent = temp(weather.main.temp);
-  UI.cardCity.textContent = weather.name;
-  UI.date.textContent = formatDate(weather.dt, "date");
+  UI.cardCity.textContent = displayCity;
+  updateCardCityTextSize(displayCity);
+  UI.date.textContent = formatDate(weather.dt, "date", timezoneOffset);
+  startLocalClock(timezoneOffset);
   UI.condition.textContent = weather.weather[0].description;
   UI.feels.textContent = `${temp(weather.main.feels_like)}${unitLabel()}`;
   UI.humidity.textContent = `${weather.main.humidity}%`;
@@ -1052,8 +1103,8 @@ function renderCurrent(weather) {
   UI.visibility.textContent = visText(weather.visibility);
   UI.currentIcon.src = weatherIconUrl(weather.weather[0].icon);
   UI.currentIcon.alt = weather.weather[0].description;
-  UI.sunrise.textContent = formatDate(weather.sys.sunrise, "time");
-  UI.sunset.textContent = formatDate(weather.sys.sunset, "time");
+  UI.sunrise.textContent = formatDate(weather.sys.sunrise, "time", timezoneOffset);
+  UI.sunset.textContent = formatDate(weather.sys.sunset, "time", timezoneOffset);
 
   setTheme(weather.weather[0].main, weather.weather[0].icon, weather);
   calculateComfort(weather);
@@ -1082,13 +1133,14 @@ async function loadByCoords(lat, lon, forcedCity = null, weatherPrefetch = null,
     if (withLoader) startCloudLoader();
     const weather = weatherPrefetch || (await fetchJson(`${API_BASE}/weather?lat=${lat}&lon=${lon}&units=${STATE.units}&lang=${weatherLang()}`));
     const forecast = await fetchJson(`${API_BASE}/forecast?lat=${lat}&lon=${lon}&units=${STATE.units}&lang=${weatherLang()}`);
+    const displayCity = forcedCity || weather.name;
 
     STATE.weather = weather;
     STATE.forecast = forecast;
     STATE.coords = weather.coord;
-    STATE.currentCity = forcedCity || weather.name;
+    STATE.currentCity = displayCity;
 
-    renderCurrent(weather);
+    renderCurrent(weather, displayCity, Number(weather.timezone || 0));
     renderHourly(forecast.list);
     renderForecast(forecast.list);
     try {
@@ -1294,7 +1346,6 @@ function initParallax() {
   ].filter((item) => item.el);
 
   const uiLayers = [
-    { el: document.querySelector(".topbar"), move: 9, scroll: 6 },
     { el: document.querySelector(".hero"), move: 12, scroll: 8 },
     { el: document.querySelector(".main-card"), move: 7, scroll: 5 }
   ].filter((item) => item.el);
@@ -1393,6 +1444,196 @@ function initRainParticles() {
   layer.dataset.ready = "1";
 }
 
+function initScrollDrivenHeroVideo() {
+  const video = UI.heroVideo;
+  if (!video) return;
+
+  const STEP_SECONDS = 1;
+  const INPUT_STEP_DELTA = 100;
+  const EPSILON = 0.08;
+  let accumulatedWheel = 0;
+  let accumulatedTouch = 0;
+  let touchStartY = 0;
+  let isScrollUnlocked = false;
+  let rafId = 0;
+  let fallbackPauseTimer = 0;
+
+  const getDuration = () => Number(video.duration);
+  const hasDuration = () => Number.isFinite(getDuration()) && getDuration() > 0;
+  const atVideoEnd = () => hasDuration() && video.currentTime >= getDuration() - EPSILON;
+
+  const stopPlayback = () => {
+    if (rafId) cancelAnimationFrame(rafId);
+    if (fallbackPauseTimer) clearTimeout(fallbackPauseTimer);
+    rafId = 0;
+    fallbackPauseTimer = 0;
+    video.pause();
+  };
+
+  const unlockScrollIfEnded = () => {
+    if (!isScrollUnlocked && atVideoEnd()) {
+      isScrollUnlocked = true;
+      stopPlayback();
+    }
+  };
+
+  const seekBackwardStep = () => {
+    if (isScrollUnlocked) return;
+    stopPlayback();
+    const next = Math.max(0, video.currentTime - STEP_SECONDS);
+    video.currentTime = next;
+  };
+
+  const playForwardStep = () => {
+    if (isScrollUnlocked) return;
+    stopPlayback();
+
+    const duration = getDuration();
+    if (!Number.isFinite(duration) || duration <= 0) {
+      const started = video.play();
+      if (started && typeof started.then === "function") {
+        started.catch(() => null);
+      }
+      fallbackPauseTimer = setTimeout(() => {
+        video.pause();
+      }, STEP_SECONDS * 1000);
+      return;
+    }
+
+    const maxTime = Math.max(0, duration - 0.04);
+    const target = Math.min(video.currentTime + STEP_SECONDS, maxTime);
+    if (target <= video.currentTime + 0.01) {
+      unlockScrollIfEnded();
+      return;
+    }
+
+    const tick = () => {
+      if (video.currentTime >= target - 0.02 || video.ended) {
+        video.pause();
+        rafId = 0;
+        unlockScrollIfEnded();
+        return;
+      }
+      rafId = requestAnimationFrame(tick);
+    };
+
+    const started = video.play();
+    if (started && typeof started.then === "function") {
+      started
+        .then(() => {
+          rafId = requestAnimationFrame(tick);
+        })
+        .catch(() => {
+          video.currentTime = target;
+          unlockScrollIfEnded();
+        });
+    } else {
+      rafId = requestAnimationFrame(tick);
+    }
+  };
+
+  video.pause();
+  video.removeAttribute("autoplay");
+  video.removeAttribute("loop");
+  video.currentTime = 0;
+
+  const shouldIntercept = (delta = 0) => {
+    if (!isScrollUnlocked) {
+      if (window.scrollY !== 0) window.scrollTo(0, 0);
+      return true;
+    }
+
+    // If user is back at the top and scrolls up, re-enter video control mode to rewind.
+    if (delta < 0 && window.scrollY <= 2 && video.currentTime > EPSILON) {
+      isScrollUnlocked = false;
+      return true;
+    }
+
+    return false;
+  };
+
+  const applyInputDelta = (delta) => {
+    if (!delta) return;
+    if (delta > 0) playForwardStep();
+    else seekBackwardStep();
+  };
+
+  window.addEventListener(
+    "wheel",
+    (event) => {
+      if (!shouldIntercept(event.deltaY)) return;
+      event.preventDefault();
+
+      accumulatedWheel += event.deltaY;
+      while (Math.abs(accumulatedWheel) >= INPUT_STEP_DELTA) {
+        const direction = accumulatedWheel > 0 ? 1 : -1;
+        applyInputDelta(direction);
+        accumulatedWheel -= direction * INPUT_STEP_DELTA;
+      }
+    },
+    { passive: false }
+  );
+
+  window.addEventListener(
+    "scroll",
+    () => {
+      if (!isScrollUnlocked && window.scrollY !== 0) window.scrollTo(0, 0);
+    },
+    { passive: true }
+  );
+
+  window.addEventListener("touchstart", (event) => {
+    if (!event.touches || !event.touches[0]) return;
+    touchStartY = event.touches[0].clientY;
+  });
+
+  window.addEventListener(
+    "touchmove",
+    (event) => {
+      if (!event.touches || !event.touches[0]) return;
+      const currentY = event.touches[0].clientY;
+      const delta = touchStartY - currentY;
+      touchStartY = currentY;
+      if (!shouldIntercept(delta)) return;
+      event.preventDefault();
+      accumulatedTouch += delta;
+
+      while (Math.abs(accumulatedTouch) >= INPUT_STEP_DELTA) {
+        const direction = accumulatedTouch > 0 ? 1 : -1;
+        applyInputDelta(direction);
+        accumulatedTouch -= direction * INPUT_STEP_DELTA;
+      }
+    },
+    { passive: false }
+  );
+
+  window.addEventListener("keydown", (event) => {
+    const tag = event.target && event.target.tagName ? event.target.tagName.toLowerCase() : "";
+    if (tag === "input" || tag === "textarea" || tag === "select" || tag === "button") return;
+    if (event.target && event.target.isContentEditable) return;
+
+    const forwardKeys = ["ArrowDown", "PageDown", " "];
+    const backwardKeys = ["ArrowUp", "PageUp"];
+    if (!forwardKeys.includes(event.key) && !backwardKeys.includes(event.key)) return;
+    const intent = forwardKeys.includes(event.key) ? 1 : -1;
+    if (!shouldIntercept(intent)) return;
+
+    event.preventDefault();
+    if (forwardKeys.includes(event.key)) applyInputDelta(1);
+    if (backwardKeys.includes(event.key)) applyInputDelta(-1);
+  });
+
+  video.addEventListener("ended", () => {
+    isScrollUnlocked = true;
+    stopPlayback();
+  });
+
+  video.addEventListener("timeupdate", unlockScrollIfEnded);
+  video.addEventListener("loadedmetadata", () => {
+    if (!isScrollUnlocked && window.scrollY !== 0) window.scrollTo(0, 0);
+  });
+}
+
 async function bootstrap() {
   localStorage.removeItem("atm_last_snapshot");
 
@@ -1415,6 +1656,7 @@ async function bootstrap() {
   wireEvents();
   observeReveal();
   initRainParticles();
+  initScrollDrivenHeroVideo();
   if ("geolocation" in navigator) {
     navigator.geolocation.getCurrentPosition(
       (pos) => loadByCoords(pos.coords.latitude, pos.coords.longitude),
