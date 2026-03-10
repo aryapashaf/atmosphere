@@ -21,6 +21,7 @@ Weather-focused single-page app with a full-screen hero video and scroll-driven 
 ## Notes
 - The hero video source is in `assets/city.mp4`.
 - Scroll interaction advances/rewinds the hero video in 1-second steps.
+- App icon is in `assets/icon.svg` and referenced by `manifest.json` and `index.html`.
 
 ## License
 MIT
