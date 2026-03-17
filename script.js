@@ -661,14 +661,19 @@ async function fetchJson(url) {
   try {
     res = await fetch(url);
   } catch (error) {
+    console.error("Network error fetching:", url, error);
     throw new WeatherApiError(t("error.network"), { url, cause: String(error) });
   }
+
+  console.log("API Response:", url, "status:", res.status);
 
   const data =
     typeof res.json === "function"
       ? await res.json().catch(() => null)
       : null;
+  
   if (!res.ok) {
+    console.error("API Error:", url, res.status, data);
     throw new WeatherApiError((data && data.message) || t("error.api_request_failed"), {
       url,
       status: res.status,
