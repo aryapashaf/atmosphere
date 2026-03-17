@@ -1133,6 +1133,14 @@ async function loadByCoords(lat, lon, forcedCity = null, weatherPrefetch = null,
     if (withLoader) startCloudLoader();
     const weather = weatherPrefetch || (await fetchJson(`${API_BASE}/weather?lat=${lat}&lon=${lon}&units=${STATE.units}&lang=${weatherLang()}`));
     const forecast = await fetchJson(`${API_BASE}/forecast?lat=${lat}&lon=${lon}&units=${STATE.units}&lang=${weatherLang()}`);
+    
+    if (!weather || !weather.name) {
+      console.error("Weather API returned null:", weather);
+      status(t("status.could_not_load"), true);
+      stopCloudLoader();
+      return;
+    }
+    
     const displayCity = forcedCity || weather.name;
 
     STATE.weather = weather;
