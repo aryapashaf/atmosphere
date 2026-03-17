@@ -1,7 +1,7 @@
 {
   "name": "weather-atmosphere",
   "version": "1.0.0",
-  "private": true,
+  "private": false,
   "description": "Atmosphere weather app with backend proxy",
   "main": "server.js",
   "scripts": {
