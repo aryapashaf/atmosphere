@@ -657,30 +657,20 @@ async function loadBySearchQuery(query) {
 }
 
 async function fetchJson(url) {
-  let res;
-  try {
-    res = await fetch(url);
-  } catch (error) {
-    console.error("Network error fetching:", url, error);
-    throw new WeatherApiError(t("error.network"), { url, cause: String(error) });
-  }
-
-  console.log("API Response:", url, "status:", res.status);
-
-  const data =
-    typeof res.json === "function"
-      ? await res.json().catch(() => null)
-      : null;
+  const res = await fetch(url);
   
   if (!res.ok) {
-    console.error("API Error:", url, res.status, data);
-    throw new WeatherApiError((data && data.message) || t("error.api_request_failed"), {
-      url,
-      status: res.status,
-      body: data
-    });
+    const text = await res.text();
+    throw new WeatherApiError(text || `HTTP ${res.status}`, { url, status: res.status });
   }
-  return data;
+
+  try {
+    const data = await res.json();
+    return data;
+  } catch (e) {
+    console.error("JSON parse error for:", url, e);
+    throw new WeatherApiError("Invalid JSON response from server", { url });
+  }
 }
 
 function deriveAlerts(weather, forecast) {
@@ -1670,18 +1660,25 @@ async function bootstrap() {
   observeReveal();
   initRainParticles();
   initScrollDrivenHeroVideo();
-  if ("geolocation" in navigator) {
-    navigator.geolocation.getCurrentPosition(
-      (pos) => loadByCoords(pos.coords.latitude, pos.coords.longitude),
-      () => {
-        status(t("status.location_denied_default"));
-        loadByCity(STATE.currentCity);
-      },
-      { timeout: 7000 }
-    );
-  } else {
-    loadByCity(STATE.currentCity);
-  }
+  
+  // Warmup serverless functions on Vercel to avoid cold start
+  fetchJson(`${API_BASE}/health`).catch(() => {});
+  
+  // Small delay to let serverless functions initialize
+  setTimeout(() => {
+    if ("geolocation" in navigator) {
+      navigator.geolocation.getCurrentPosition(
+        (pos) => loadByCoords(pos.coords.latitude, pos.coords.longitude),
+        () => {
+          status(t("status.location_denied_default"));
+          loadByCity(STATE.currentCity);
+        },
+        { timeout: 7000 }
+      );
+    } else {
+      loadByCity(STATE.currentCity);
+    }
+  }, 500);
 }
 
 bootstrap();
