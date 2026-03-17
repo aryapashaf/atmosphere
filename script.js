@@ -1128,14 +1128,6 @@ async function loadByCoords(lat, lon, forcedCity = null, weatherPrefetch = null,
     if (withLoader) startCloudLoader();
     const weather = weatherPrefetch || (await fetchJson(`${API_BASE}/weather?lat=${lat}&lon=${lon}&units=${STATE.units}&lang=${weatherLang()}`));
     const forecast = await fetchJson(`${API_BASE}/forecast?lat=${lat}&lon=${lon}&units=${STATE.units}&lang=${weatherLang()}`);
-    
-    if (!weather || !weather.name) {
-      console.error("Weather API returned null:", weather);
-      status(t("status.could_not_load"), true);
-      stopCloudLoader();
-      return;
-    }
-    
     const displayCity = forcedCity || weather.name;
 
     STATE.weather = weather;
@@ -1661,24 +1653,18 @@ async function bootstrap() {
   initRainParticles();
   initScrollDrivenHeroVideo();
   
-  // Warmup serverless functions on Vercel to avoid cold start
-  fetchJson(`${API_BASE}/health`).catch(() => {});
-  
-  // Small delay to let serverless functions initialize
-  setTimeout(() => {
-    if ("geolocation" in navigator) {
-      navigator.geolocation.getCurrentPosition(
-        (pos) => loadByCoords(pos.coords.latitude, pos.coords.longitude),
-        () => {
-          status(t("status.location_denied_default"));
-          loadByCity(STATE.currentCity);
-        },
-        { timeout: 7000 }
-      );
-    } else {
-      loadByCity(STATE.currentCity);
-    }
-  }, 500);
+  if ("geolocation" in navigator) {
+    navigator.geolocation.getCurrentPosition(
+      (pos) => loadByCoords(pos.coords.latitude, pos.coords.longitude),
+      () => {
+        status(t("status.location_denied_default"));
+        loadByCity(STATE.currentCity);
+      },
+      { timeout: 7000 }
+    );
+  } else {
+    loadByCity(STATE.currentCity);
+  }
 }
 
 bootstrap();
